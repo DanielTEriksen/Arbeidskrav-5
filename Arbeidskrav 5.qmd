@@ -1,0 +1,220 @@
+---
+title: "Arbeidskrav 5"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+
+
+
+#| echo: false
+#| label: fig-styrke
+#| fig-cap: "Utvikling i muskelstyrke for leg press og leg extension"
+
+# Utregning av gjennomsnitt og SD for muskelstyrke
+
+library(dplyr)
+library(exscidata)
+
+
+strength_mean.sd <- strengthvolume %>% 
+  filter(exercise %in% c("legpress", "legext")) %>% 
+  group_by(time, sets, sex, exercise) %>% 
+  summarise(mean_strength = mean(load, na.rm = TRUE),
+            sd_strength = sd(load, na.rm = TRUE)) %>% 
+  ungroup()
+
+# Diagram av utviklingen i muskelstyrke
+
+library(ggplot2)
+
+## Endre navn på tidspunktene
+
+strength <- strength_mean.sd %>%
+  mutate(time = recode(time,
+                       "pre" = "Pre",
+                       "session1" = "Uke 1",
+                       "week2" = "Uke 2",
+                       "week5" = "Uke 5",
+                       "week9" = "Uke 9",
+                       "post" = "Post"),
+         time = factor(time, levels = c("Pre", "Uke 1", "Uke 2", "Uke 5", "Uke 9", "Post")))
+
+ggplot(strength, aes(x = time, y = mean_strength, color = sets, shape = sex, group = interaction(sets, sex, exercise))) +
+  geom_line(size = 1) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = mean_strength - sd_strength, ymax = mean_strength + sd_strength), width = 0.2) +
+  facet_wrap(~ exercise) +
+  labs(x = "Tidspunkt", y = "Gjennomsnittlig muskelstyrke (kg)", color = "Treningsvolum", shape = "Kj\u00F8nn") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+
+
+
+library(tidyverse); library(exscidata); library(lme4)
+
+# Load data
+dat <- dxadata %>%
+  select(participant:include, lean.left_leg, lean.right_leg) %>%
+        
+        # Extract leg specific data
+  pivot_longer(names_to = "leg", 
+               values_to = "lean.mass", 
+               cols = lean.left_leg:lean.right_leg) %>%
+  mutate(leg = if_else(leg == "lean.left_leg", "L", "R"), 
+         sets = if_else(multiple == leg, "multiple", "single")) %>%
+  select(participant, time, sex, include, sets, leg, lean.mass) %>%
+        # Filter only included participants
+        filter(include == "incl") %>%
+        # Make data set wider by time 
+        
+        pivot_wider(names_from = "time", 
+                    values_from = "lean.mass") %>%
+        # Calculate change score
+        
+        mutate(change = post - pre) %>%
+        
+        # Keep change score and make it wider by sets
+        select(participant:sets, change) %>%
+        pivot_wider(names_from = sets, values_from = change) %>%
+        
+  print()
+
+### Use simple t-test on change score
+
+t.test(dat$multiple, dat$single, paired = TRUE)
+
+```
+
+```{r}
+
+
+
+library(tidyverse)
+
+# Transformere dataene for å vise både "pre" og "post"
+dxadata %>%
+  select(participant:include, lean.left_leg, lean.right_leg, time) %>%  # Inkluder 'time' for å få pre/post
+  pivot_longer(names_to = "leg", 
+               values_to = "lean.mass", 
+               cols = lean.left_leg:lean.right_leg) %>%  # Omstrukturere venstre og høyre ben
+  mutate(leg = if_else(leg == "lean.left_leg", "L", "R"),  # Endre leg-koden til 'L' og 'R'
+         sets = if_else(multiple == leg, "multiple", "single")) %>%  # Bestemme type sett
+  select(participant, time, sex, include, sets, leg, lean.mass) %>%  # Velg relevante kolonner
+  print()  # Vis tabellen
+
+ggplot(dxadata %>%
+         select(participant:include, lean.left_leg, lean.right_leg, time) %>%
+         pivot_longer(names_to = "leg", 
+                      values_to = "lean.mass", 
+                      cols = lean.left_leg:lean.right_leg) %>%
+         mutate(leg = if_else(leg == "lean.left_leg", "L", "R"), 
+                sets = if_else(multiple == leg, "multiple", "single")) %>%
+         select(participant, time, sex, include, sets, leg, lean.mass), 
+       aes(x = leg, y = lean.mass, fill = sets)) +
+  geom_boxplot() +
+  facet_wrap(~ time + sex) +  # Facet på både 'time' (pre/post) og 'sex'
+  labs(title = "Lean Mass by Leg, Sets, Time, and Sex",
+       x = "Leg",
+       y = "Lean Mass")
+
+```
+
+```{r}
+
+#| echo: false
+#| label: tbl-muskeltverr
+#| tbl-cap: "Oppsummering av muskeltverrsnitt før og etter intervensjon (kombinert for kjønn, kun pre og post)"
+
+# Utregning av gjennomsnitt og SD for muskeltverrsnitt
+library(dplyr)
+library(knitr)
+library(ggplot2)
+
+# Dataprosessering - omstrukturering og kombinering av data for høyre og venstre ben
+muskeltverr <- dxadata %>%
+  select(participant:include, lean.left_leg, lean.right_leg) %>%
+  pivot_longer(
+    cols = lean.left_leg:lean.right_leg, 
+    names_to = "leg", 
+    values_to = "lean.mass"
+  ) %>%
+  mutate(
+    leg = if_else(leg == "lean.left_leg", "L", "R"), 
+    sets = if_else(multiple == leg, "multiple", "single")
+  ) %>%
+  select(participant, time, sex, include, sets, leg, lean.mass)
+
+# Oppsummering av gjennomsnitt og standardavvik etter tid, treningsvolum og kjønn
+muskeltverr_summary <- muskeltverr %>% 
+  group_by(time, sets, sex) %>% 
+  summarise(
+    mean_lean_mass = mean(lean.mass, na.rm = TRUE),
+    sd_lean_mass = sd(lean.mass, na.rm = TRUE),
+    .groups = "drop"  # Fjerner grupperingen automatisk etter summarise
+  )
+
+# Filtrer til pre og post tidspunkter og kombiner kjønn for en enklere oversikt
+muskeltverr_summary_pre_post <- muskeltverr_summary %>%
+  filter(time %in% c("pre", "post")) %>%
+  group_by(time, sets) %>%
+  summarise(
+    mean_lean_mass = mean(mean_lean_mass, na.rm = TRUE),
+    sd_lean_mass = sqrt(mean(sd_lean_mass^2, na.rm = TRUE)),  # Kombinert SD ved å bruke kvadratet av SD
+    .groups = "drop"
+  ) %>%
+  arrange(time, sets)  # Sortér etter tid og treningsvolum
+
+# Lag en oversiktlig tabell
+muskeltverr_summary_pre_post %>%
+  kable(
+    col.names = c("Tidspunkt", "Treningsvolum", "Gjennomsnittlig muskeltverrsnitt (g)", "Standardavvik (SD)"))
+
+
+```
+
+```{r}
+
+
+#| echo: false
+#| label: tbl-antro
+#| tbl-cap: "Deltakerkarakteristikker"
+
+# Last inn dataene
+library(exscidata)
+data("strengthvolume"); data("dxadata")
+
+# Hent antropometriske data fra datasett
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+baseline_tbl <- dxadata %>%
+  select(participant:time, sex:weight, age, height) %>%  # Sørg for at disse kolonnene finnes
+  filter(time == "pre") %>% 
+  group_by(sex, include) %>% 
+  summarise(
+    N = n(),
+    Alder = sprintf("%.1f (%.1f)", mean(age, na.rm = TRUE), sd(age, na.rm = TRUE)),
+    Vekt = sprintf("%.1f (%.1f)", mean(weight, na.rm = TRUE), sd(weight, na.rm = TRUE)),
+    Stature = sprintf("%.0f (%.0f)", mean(height, na.rm = TRUE), sd(height, na.rm = TRUE)),
+    .groups = "drop"  # For å unngå advarsler om grupping
+  ) %>% 
+  # Konverter alle kolonnene til karakter for å unngå datatypeproblemer i pivot_longer
+  mutate(across(everything(), as.character)) %>%
+  pivot_longer(cols = c(N, Alder, Vekt, Stature), names_to = "Variable", values_to = "Value") %>% 
+  unite("sex_include", sex, include, sep = "_") %>% 
+  pivot_wider(names_from = sex_include, values_from = Value)
+
+# Tabell 
+kable(baseline_tbl, row.names = FALSE, col.names = c("", "Ekskludert", "Inkludert", "Ekskludert", "Inkludert")) %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  add_header_above(c(" " = 1, "Kvinne" = 2, "Mann" = 2))
+
+```
